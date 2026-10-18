@@ -13,7 +13,7 @@
 > [!NOTE]
 > 本主题在 [原作者:Montia37 v1.2.5](https://github.com/Montia37/komari-theme-purcarte/releases/tag/v1.2.5) 版本基础上进行二次开发的主题，且是在 Codex 的辅助下完成
 > 
-> **此版本肯定不会满足所有人的需求,我只针对我发现的问题，我用着不好的，或者喜欢的方向开发，如果介意，请使用原版** ； [声明](https://github.com/YoungYannick/komari-theme-purcarte-plus/issues/13)
+> **此版本肯定不会满足所有人的需求,我只针对我发现的问题，我用着不好的，或者喜欢的方向开发，如果介意，请使用原版** ； [声明](https://github.com/duya07/komari-theme-purcarte-plus/issues/13)
 
 ---
 
@@ -27,7 +27,7 @@
 
 ### 安装与启用
 
-1.  前往 [Releases](https://github.com/YoungYannick/komari-theme-purcarte-plus/releases) 页面下载最新的 `komari-theme-purcarte-plus.zip` 文件
+1.  前往 [Releases](https://github.com/duya07/komari-theme-purcarte-plus/releases) 页面下载最新的 `komari-theme-purcarte-plus.zip` 文件
 2.  进入 Komari 后台，上传 `zip` 压缩包并启用本主题
 
 ### 可用配置
@@ -738,7 +738,7 @@ komari-theme-purcarte-plus/
 1.  **克隆仓库**
 
     ```bash
-    git clone https://github.com/YoungYannick/komari-theme-purcarte-plus.git
+    git clone https://github.com/duya07/komari-theme-purcarte-plus.git
     cd komari-theme-purcarte-plus
     ```
 
