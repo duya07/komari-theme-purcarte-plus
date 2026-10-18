@@ -634,12 +634,12 @@ export function sampleDataByRetention(
  * @returns 以百分比表示的丢包率。
  */
 /**
- * 根据 ping 历史记录计算任务的统计数据（丢包率和最新值）。
+ * 根据 ping 历史记录计算任务的统计数据（丢包率、最新值、最小值和最大值）。
  * @param records - ping 历史记录数组。
  * @param taskId - 要计算的任务 ID。
  * @param timeRange - 用于筛选记录的可选时间范围 [开始, 结束]。
  * @param authoritativeLoss - 服务端返回的完整查询范围任务丢包率百分比。
- * @returns 包含丢包率和最新值的对象。
+ * @returns 包含丢包率、最新值、最小值和最大值的对象。
  */
 export function calculateTaskStats(
   records: {
@@ -652,7 +652,7 @@ export function calculateTaskStats(
   taskId: number,
   timeRange: [number, number] | null,
   authoritativeLoss?: number
-): { loss: number; latestValue: number | null; latestTime: string | null } {
+): { loss: number; latestValue: number | null; latestTime: string | null; minValue: number | null; maxValue: number | null } {
   const relevantRecords = timeRange
     ? records.filter((rec) => {
         const t = new Date(rec.time).getTime();
@@ -672,6 +672,17 @@ export function calculateTaskStats(
       Number.isFinite(rec.value) &&
       rec.value >= 0
   );
+  const successfulValues = successfulPings
+    .map((rec) => rec.value)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const minValue =
+    successfulValues.length > 0
+      ? successfulValues.reduce((min, value) => Math.min(min, value), Infinity)
+      : null;
+  const maxValue =
+    successfulValues.length > 0
+      ? successfulValues.reduce((max, value) => Math.max(max, value), -Infinity)
+      : null;
   const metricLossRecords = sortedTaskRecords.filter(
     (rec) =>
       typeof rec.loss_ratio === "number" && Number.isFinite(rec.loss_ratio)
@@ -720,5 +731,5 @@ export function calculateTaskStats(
     latestTime = latestRecord.time;
   }
 
-  return { loss, latestValue, latestTime };
+  return { loss, latestValue, latestTime, minValue, maxValue };
 }

@@ -404,7 +404,9 @@ class ApiService {
 
   private normalizePingHistory(data: any): PingHistoryResponse | null {
     if (!data) return null;
-    const records: PingHistoryRecord[] = Array.isArray(data.records)
+
+    const hasTaskMetadata = Array.isArray(data.tasks);
+    const rawRecords: PingHistoryRecord[] = Array.isArray(data.records)
       ? data.records
           .map((record: any) => {
             const taskId = Number(record.task_id);
@@ -417,9 +419,13 @@ class ApiService {
               value: value === null ? null : value,
             };
           })
-          .filter(Boolean)
+          .filter(
+            (record: PingHistoryRecord | null): record is PingHistoryRecord =>
+              record !== null
+          )
       : [];
-    let tasks: PingTask[] = Array.isArray(data.tasks)
+
+    const tasks: PingTask[] = hasTaskMetadata
       ? data.tasks
           .map((task: any) => {
             const id = Number(task.id);
@@ -433,27 +439,35 @@ class ApiService {
                 loss !== null && loss >= 0 ? Math.min(100, loss) : undefined,
             };
           })
-          .filter((task: PingTask | null): task is PingTask => task !== null)
+          .filter(
+            (task: PingTask | null): task is PingTask => task !== null
+          )
       : [];
 
-    if (tasks.length === 0 && records.length > 0) {
-      const taskIdSet = new Set<number>();
-      records.forEach((record: any) => {
-        const taskId = Number(record.task_id);
-        if (Number.isFinite(taskId)) taskIdSet.add(taskId);
-      });
+    const activeTaskIds = hasTaskMetadata
+      ? new Set(tasks.map((task) => task.id))
+      : null;
+    const records = activeTaskIds
+      ? rawRecords.filter((record) => activeTaskIds.has(record.task_id))
+      : rawRecords;
 
-      tasks = Array.from(taskIdSet)
-        .sort((a, b) => a - b)
-        .map((id) => ({
-          id,
-          name: `Task ${id}`,
-          interval: 30,
-        }));
+    if (!hasTaskMetadata && tasks.length === 0 && records.length > 0) {
+      const taskIdSet = new Set<number>();
+      records.forEach((record) => taskIdSet.add(record.task_id));
+
+      tasks.push(
+        ...Array.from(taskIdSet)
+          .sort((a, b) => a - b)
+          .map((id) => ({
+            id,
+            name: `Task ${id}`,
+            interval: 30,
+          }))
+      );
     }
 
     return {
-      count: data.count ?? records.length,
+      count: records.length,
       records,
       tasks,
       ...this.historyRangeMetadata(data),
@@ -969,11 +983,31 @@ class ApiService {
     };
 
     const built = buildRecords(metricData);
-    if (!built || !this.isPingMetricsConsistent(built.records, statsData)) {
+    if (!built) return null;
+
+    const activeTaskIds = new Set(
+      taskList
+        .filter((task) => {
+          const clients = (task as PingTaskFull).clients;
+          if (!Array.isArray(clients)) return true;
+          return clients.includes(uuid);
+        })
+        .map((task) => Number(task.id))
+    );
+    const taskIds = new Set(
+      [...built.taskIds].filter((taskId) => activeTaskIds.has(taskId))
+    );
+    const records = built.records.filter((record) =>
+      taskIds.has(record.task_id)
+    );
+    if (
+      records.length === 0 ||
+      !this.isPingMetricsConsistent(records, statsData)
+    ) {
       return null;
     }
 
-    const { records, taskIds, intervalByTask } = built;
+    const { intervalByTask } = built;
 
     const taskMap = new Map<number, PingTask>();
     for (const task of taskList) {
@@ -1004,17 +1038,6 @@ class ApiService {
             ? { loss: existing.loss }
             : {}),
       });
-    }
-
-    for (const id of taskIds) {
-      if (!taskMap.has(id)) {
-        taskMap.set(id, {
-          id,
-          name: `Task ${id}`,
-          interval: 60,
-          data_interval: intervalByTask.get(id),
-        });
-      }
     }
 
     records.sort(

@@ -37,6 +37,7 @@ export const NodeGridContainer = ({
     cardSelector: '[data-card-type="grid"]',
     tagsSelector: '[data-section="tags"]',
     trafficSelector: '[data-section="traffic"]',
+    dividerSelector: '[data-section="tags-divider"]',
     enabled: true,
   });
 
@@ -127,7 +128,7 @@ export const NodeGrid = ({
           />
           <FinancePriceTag node={node} triggerElement={priceTagElement} />
         </div>
-        <div className="border-t border-(--gray-a4) my-2"></div>
+        <div data-section="tags-divider" className="border-t border-(--gray-a4) my-2"></div>
         {isShowHWBarInCard && (
           <div className="flex items-center justify-around whitespace-nowrap">
             <div className="flex items-center gap-1">

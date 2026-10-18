@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/useMobile";
 import { Eye, EyeOff, ArrowRightToLine, RefreshCw } from "lucide-react";
 import {
-  LineChart,
+  Area,
+  ComposedChart,
   Line,
   XAxis,
   YAxis,
@@ -42,6 +43,20 @@ interface PingChartProps {
   hours: number;
   range?: HistoryQueryRange | null;
 }
+
+const getPacketLossPercent = (record: {
+  value: number | null;
+  loss_ratio?: number | null;
+}) => {
+  if (typeof record.loss_ratio === "number" && Number.isFinite(record.loss_ratio)) {
+    const ratio = record.loss_ratio <= 1 ? record.loss_ratio * 100 : record.loss_ratio;
+    return Math.max(0, Math.min(100, ratio));
+  }
+  if (typeof record.value === "number" && Number.isFinite(record.value)) {
+    return record.value < 0 ? 100 : 0;
+  }
+  return null;
+};
 
 const PingChart = memo(({ node, hours, range }: PingChartProps) => {
   const { enableCutPeak, enableConnectBreaks, pingChartMaxPoints, monitorNodeSortMode, monitorNodeCustomOrder } = useAppConfig();
@@ -141,12 +156,17 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
           bucketToAnchor.set(bucket, use);
         }
       }
-      grouped[use][rec.task_id] =
+      const taskKey = String(rec.task_id);
+      grouped[use][taskKey] =
         typeof rec.value === "number" &&
         Number.isFinite(rec.value) &&
         rec.value >= 0
           ? rec.value
           : null;
+      const packetLoss = getPacketLossPercent(rec);
+      if (packetLoss !== null) {
+        grouped[use][`${taskKey}__loss`] = packetLoss;
+      }
     }
 
     if (historyStart !== undefined && historyEnd !== undefined) {
@@ -184,16 +204,13 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
     let full = midData;
     const tasks = pingHistory?.tasks || [];
     if (!full.length) return [];
-    const activeTasks = tasks.filter(
-      (task) => visiblePingTasks.length === 0 || visiblePingTasks.includes(task.id)
-    );
-    if (!activeTasks.length) {
-      return full.map((d: any) => ({
-        ...d,
-        time: d.__ts ?? new Date(d.time).getTime(),
-      }));
-    }
-    const keys = activeTasks.map((t) => String(t.id));
+
+    const activeTasks = tasks.filter((task) => visiblePingTasks.includes(task.id));
+    if (!activeTasks.length) return [];
+
+    const keys = activeTasks.map((task) => String(task.id));
+    const singleTaskKey = keys.length === 1 ? keys[0] : null;
+    const packetLossKey = singleTaskKey ? `${singleTaskKey}__loss` : null;
     const intervalByKey = new Map(
       activeTasks.map((task) => [
         String(task.id),
@@ -223,7 +240,6 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
       full = cutPeakValues(full, keys);
     }
 
-    // 使用 Uint8Array 替代 Set<string> 标记 null 值
     const keyCount = keys.length;
     const preservedNulls = new Uint8Array(full.length * keyCount);
     for (let i = 0; i < full.length; i++) {
@@ -240,7 +256,6 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
       maxCapMs: 30 * 60_000,
     });
 
-    // 恢复原始 null 值
     for (let i = 0; i < full.length; i++) {
       for (let ki = 0; ki < keyCount; ki++) {
         if (preservedNulls[i * keyCount + ki] === 1) {
@@ -249,19 +264,32 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
       }
     }
 
+    const toChartPoint = (point: any) => ({
+      ...point,
+      time: point.__ts ?? new Date(point.time).getTime(),
+      ...(packetLossKey
+        ? { packet_loss: point[packetLossKey] ?? null }
+        : {}),
+    });
+
     if (effectiveMax > 0 && full.length > effectiveMax) {
       const withTs = full.map((d: any) => ({
         ...d,
         time: d.__ts ?? new Date(d.time).getTime(),
       }));
-      return lttbDownsamplePreservingGaps(withTs, effectiveMax, keys);
+      return lttbDownsamplePreservingGaps(withTs, effectiveMax, keys).map(
+        toChartPoint
+      );
     }
 
-    return full.map((d: any) => ({
-      ...d,
-      time: d.__ts ?? new Date(d.time).getTime(),
-    }));
-  }, [midData, cutPeak, pingHistory?.tasks, pingChartMaxPoints, visiblePingTasks]);
+    return full.map(toChartPoint);
+  }, [
+    midData,
+    cutPeak,
+    pingHistory?.tasks,
+    pingChartMaxPoints,
+    visiblePingTasks,
+  ]);
 
   const handleTaskVisibilityToggle = (taskId: number) => {
     setVisiblePingTasks((prev) =>
@@ -393,7 +421,7 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
     if (!pingHistory?.records || !sortedTasks.length) return [];
 
     return sortedTasks.map((task) => {
-      const { loss, latestValue, latestTime } = calculateTaskStats(
+      const { loss, latestValue, latestTime, minValue, maxValue } = calculateTaskStats(
         pingHistory.records,
         task.id,
         timeRange,
@@ -403,6 +431,8 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
         ...task,
         value: latestValue,
         time: latestTime,
+        minValue,
+        maxValue,
         loss: loss,
         color: generateColor(task.name, sortedTasks),
       };
@@ -414,6 +444,9 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
     () => sortedTasks.filter((t) => visiblePingTasks.includes(t.id)),
     [sortedTasks, visiblePingTasks]
   );
+  const selectedTask =
+    visibleSortedTasks.length === 1 ? visibleSortedTasks[0] : null;
+
 
   return (
     <div className="relative space-y-4 h-full flex flex-col min-h-114">
@@ -456,16 +489,31 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
                         ? `0 0 8px ${task.color}`
                         : undefined,
                     }}>
-                    <div className="font-semibold">{task.name}</div>
-                    <div className="flex text-xs font-normal">
-                      <span>
-                        {task.value !== null
-                          ? `${task.value.toFixed(1)} ms | ${task.loss.toFixed(
-                              1
-                            )}%`
-                          : t("node.notAvailable")}
-                      </span>
+                    <div className="font-semibold text-xs sm:text-sm whitespace-nowrap">
+                      {task.name}
                     </div>
+                    {task.value !== null ? (
+                      <>
+                        <div className="text-sm sm:text-base font-semibold leading-none">
+                          {task.value.toFixed(2)} ms
+                        </div>
+                        <div className="flex flex-wrap items-center justify-center gap-x-2 text-xs font-normal">
+                          {task.minValue !== null && (
+                            <span className="text-green-600">↓{task.minValue.toFixed(0)}</span>
+                          )}
+                          {task.maxValue !== null && (
+                            <span className="text-red-600">↑{task.maxValue.toFixed(0)}</span>
+                          )}
+                          <span className="text-secondary-foreground">
+                            {task.loss.toFixed(2)}%
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-xs font-normal">
+                        {t("node.notAvailable")}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -567,7 +615,7 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
               width="100%"
               height="100%"
               className={"min-h-90"}>
-              <LineChart data={chartData} margin={chartMargin} onMouseMove={handleChartMouseMove}>
+              <ComposedChart data={chartData} margin={chartMargin} onMouseMove={handleChartMouseMove}>
                 <CartesianGrid
                   strokeDasharray="2 4"
                   stroke="var(--theme-line-muted-color)"
@@ -605,13 +653,27 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
                   scale="time"
                 />
                 <YAxis
-                  mirror={true}
-                  width={30}
+                  yAxisId="delay"
+                  width={42}
                   tick={{ fill: "var(--theme-text-muted-color)" }}
+                  tickFormatter={(value) => `${value}ms`}
                   axisLine={{
                     stroke: "var(--theme-line-muted-color)",
                   }}
                 />
+                {selectedTask && (
+                  <YAxis
+                    yAxisId="packet-loss"
+                    orientation="right"
+                    width={42}
+                    domain={[0, 100]}
+                    tick={{ fill: "var(--theme-text-muted-color)" }}
+                    tickFormatter={(value) => `${value}%`}
+                    axisLine={{
+                      stroke: "var(--theme-line-muted-color)",
+                    }}
+                  />
+                )}
                 <Tooltip
                   cursor={false}
                   wrapperStyle={{ zIndex: 100, pointerEvents: "none" }}
@@ -619,6 +681,26 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
                   content={
                     <ScrollableTooltip
                       labelFormatter={(value: any) => lableFormatter(value, hours)}
+                      chartConfig={{
+                        series: [
+                          ...(selectedTask
+                            ? [
+                                {
+                                  dataKey: "packet_loss",
+                                  tooltipLabel: t("chart.lossRate"),
+                                  tooltipFormatter: (value: number) =>
+                                    `${Number(value).toFixed(2)}%`,
+                                },
+                              ]
+                            : []),
+                          ...visibleSortedTasks.map((task) => ({
+                            dataKey: String(task.id),
+                            tooltipLabel: task.name,
+                            tooltipFormatter: (value: number) =>
+                              `${Number(value).toFixed(2)} ms`,
+                          })),
+                        ],
+                      }}
                     />
                   }
                 />
@@ -632,14 +714,30 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
                       strokeOpacity={0.6}
                     />
                   ))}
+                {selectedTask && (
+                  <Area
+                    type="linear"
+                    dataKey="packet_loss"
+                    name={t("chart.lossRate")}
+                    yAxisId="packet-loss"
+                    stroke="#f59e0b"
+                    fill="#f59e0b"
+                    fillOpacity={0.24}
+                    strokeWidth={1}
+                    dot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
+                )}
                 {visibleSortedTasks.map((task) => (
                   <Line
                     key={task.id}
-                    type={"monotone"}
+                    type="linear"
                     dataKey={String(task.id)}
                     name={task.name}
+                    yAxisId="delay"
                     stroke={generateColor(task.name, sortedTasks)}
-                    strokeWidth={2}
+                    strokeWidth={1.5}
                     dot={false}
                     connectNulls={connectBreaks}
                     isAnimationActive={visibleSortedTasks.length <= 10}
@@ -688,7 +786,7 @@ const PingChart = memo(({ node, hours, range }: PingChartProps) => {
                     }
                   }}
                 />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           ) : (
             <div className="min-h-90 flex items-center justify-center">

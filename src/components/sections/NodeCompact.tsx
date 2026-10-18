@@ -30,6 +30,7 @@ export const NodeCompactContainer = ({ nodes }: NodeCompactContainerProps) => {
     containerSelector: '[data-view-type="compact"]',
     cardSelector: '[data-card-type="compact"]',
     tagsSelector: '[data-section="tags"]',
+    dividerSelector: '[data-section="tags-divider"]',
     enabled: true,
   });
 
@@ -107,7 +108,7 @@ export const NodeCompact = ({ node, onShowDetails }: NodeCompactProps) => {
           />
           <FinancePriceTag node={node} triggerElement={priceTagElement} />
         </div>
-        <div className="border-t border-(--gray-a4) my-1"></div>
+        <div data-section="tags-divider" className="border-t border-(--gray-a4) my-1"></div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <CpuIcon className="size-4 text-blue-600" />

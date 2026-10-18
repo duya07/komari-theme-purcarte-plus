@@ -129,7 +129,7 @@ export function EarthGlobe() {
         .trim();
     const storedColor = localStorage.getItem('color')?.replace(/"/g, '');
     return cssColor || storedColor || "#3b82f6";
-  }, [isDark, modalOpen]);
+  }, []);
 
   // 背景配置
   const bgConfig = useMemo(() => {

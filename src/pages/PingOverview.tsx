@@ -77,6 +77,7 @@ type CustomTimeRange = {
 // localStorage 键
 const SERVER_SORT_KEY = "pingOverview_serverSort";
 const CUSTOM_RANGE_HOURS = -1;
+const PING_OVERVIEW_REFRESH_INTERVAL_MS = 10_000;
 
 const toDateTimeLocalValue = (date: Date) => {
   const offset = date.getTimezoneOffset() * 60_000;
@@ -353,11 +354,26 @@ const PingOverview = memo(() => {
   const historyStart = historyBounds?.start;
   const historyEnd = historyBounds?.end;
   const fetchRequestIdRef = useRef(0);
+  const pingFetchInFlightRef = useRef(false);
   const hasLoadedPingDataRef = useRef(false);
   const [hasLoadedPingData, setHasLoadedPingData] = useState(false);
 
-  const fetchAllPingData = useCallback(async () => {
-    if (!nodes || nodes.length === 0) return;
+  const fetchAllPingData = useCallback(async ({ preserveView = false }: { preserveView?: boolean } = {}) => {
+    if (pingFetchInFlightRef.current) return;
+    if (!nodes || nodes.length === 0) {
+      ++fetchRequestIdRef.current;
+      setAllPingData(new Map());
+      setHistoryBounds(null);
+      setTimeRange(null);
+      setBrushIndices({});
+      setDataError(null);
+      setDataLoading(false);
+      hasLoadedPingDataRef.current = true;
+      setHasLoadedPingData(true);
+      return;
+    }
+
+    pingFetchInFlightRef.current = true;
     const requestId = ++fetchRequestIdRef.current;
     const requestedRange =
       queryStart && queryEnd ? { start: queryStart, end: queryEnd } : null;
@@ -367,20 +383,25 @@ const PingOverview = memo(() => {
     );
     if (maxPingRecordPreserveTime <= 0) {
       setAllPingData(new Map());
-      setTimeRange(null);
-      setBrushIndices({});
+      if (!preserveView) {
+        setTimeRange(null);
+        setBrushIndices({});
+      }
       setDataError(null);
       setDataLoading(false);
       hasLoadedPingDataRef.current = true;
       setHasLoadedPingData(true);
+      pingFetchInFlightRef.current = false;
       return;
     }
     if (!hasLoadedPingDataRef.current) {
       setAllPingData(new Map());
     }
-    setTimeRange(null);
-    setBrushIndices({});
-    setDataLoading(true);
+    if (!preserveView) {
+      setTimeRange(null);
+      setBrushIndices({});
+    }
+    setDataLoading(!preserveView);
     setDataError(null);
 
     const BATCH_SIZE = 5;
@@ -422,6 +443,7 @@ const PingOverview = memo(() => {
         setHasLoadedPingData(true);
         setDataLoading(false);
       }
+      pingFetchInFlightRef.current = false;
     }
   }, [
     nodes,
@@ -433,10 +455,25 @@ const PingOverview = memo(() => {
   ]);
 
   useEffect(() => {
-    if (!nodesLoading && nodes && nodes.length > 0) {
-      fetchAllPingData();
-    }
-  }, [nodesLoading, nodes, fetchAllPingData]);
+    if (nodesLoading) return;
+
+    void fetchAllPingData();
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void fetchAllPingData({ preserveView: true });
+      }
+    };
+    const refreshTimer = window.setInterval(
+      refresh,
+      PING_OVERVIEW_REFRESH_INTERVAL_MS
+    );
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [nodesLoading, fetchAllPingData]);
 
   // 构建合并线条信息
   const allLines = useMemo<CombinedLineInfo[]>(() => {
@@ -547,12 +584,15 @@ const PingOverview = memo(() => {
   }, [allLines, monitorNodeSortMode, monitorNodeCustomOrder, pingTasksFull]);
 
   const sortedAllServerNodes = useMemo(() => {
-    const servers = (nodes || []).map((node) => ({
-      uuid: node.uuid,
-      name: node.name,
-      weight: node.weight ?? 0,
-      group: node.group ?? "",
-    }));
+    const activeServerUuids = new Set(allLines.map((line) => line.uuid));
+    const servers = (nodes || [])
+      .filter((node) => activeServerUuids.has(node.uuid))
+      .map((node) => ({
+        uuid: node.uuid,
+        name: node.name,
+        weight: node.weight ?? 0,
+        group: node.group ?? "",
+      }));
     const { key: sortKey, dir: sortDir } = serverSort;
     servers.sort((a, b) => {
       const cmp =
@@ -562,7 +602,7 @@ const PingOverview = memo(() => {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return servers;
-  }, [nodes, serverSort]);
+  }, [nodes, allLines, serverSort]);
 
   // 去重的服务器节点 + 排序
   const uniqueServerNodes = useMemo(() => {
@@ -633,18 +673,17 @@ const PingOverview = memo(() => {
   const knownServerNodesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (uniqueMonitorNodes.length === 0) return;
-
     const knownNames = new Set(uniqueMonitorNodes);
     const previousKnownNames = knownMonitorNodesRef.current;
     setVisibleMonitorNodes((prev) => {
       if (!hasInitializedMonitorSelectionRef.current) {
+        if (knownNames.size === 0) return new Set();
         hasInitializedMonitorSelectionRef.current = true;
-        return new Set(uniqueMonitorNodes);
+        return new Set(knownNames);
       }
 
       const next = new Set([...prev].filter((name) => knownNames.has(name)));
-      uniqueMonitorNodes.forEach((name) => {
+      knownNames.forEach((name) => {
         if (!previousKnownNames.has(name)) {
           next.add(name);
         }
@@ -655,14 +694,13 @@ const PingOverview = memo(() => {
   }, [uniqueMonitorNodes]);
 
   useEffect(() => {
-    if (sortedAllServerNodes.length === 0) return;
-
     const knownUuids = new Set(
       sortedAllServerNodes.map((server) => server.uuid)
     );
     const previousKnownUuids = knownServerNodesRef.current;
     setVisibleServers((prev) => {
       if (!hasInitializedServerSelectionRef.current) {
+        if (knownUuids.size === 0) return new Set();
         hasInitializedServerSelectionRef.current = true;
         return new Set(knownUuids);
       }
@@ -697,6 +735,15 @@ const PingOverview = memo(() => {
 
   // 单条线的显隐状态（通过统计卡片点击控制）
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const currentLineKeys = new Set(allLines.map((line) => line.key));
+    setHiddenLines((prev) => {
+      const next = new Set(
+        [...prev].filter((lineKey) => currentLineKeys.has(lineKey))
+      );
+      return next.size === prev.size ? prev : next;
+    });
+  }, [allLines]);
 
   const isLineVisible = useCallback(
     (line: CombinedLineInfo) => {

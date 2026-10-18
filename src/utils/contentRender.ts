@@ -172,7 +172,7 @@ function renderTable(rows: string[]): string {
   const bodyRows = rows.slice(2).map(splitTableRow);
 
   const renderCell = (text: string, tag: "th" | "td", align: string | null) => {
-    const style = align ? ` style=\"text-align:${align}\"` : "";
+    const style = align ? ` style="text-align:${align}"` : "";
     return `<${tag}${style}>${applyInlineMarkdown(text)}</${tag}>`;
   };
 
@@ -471,7 +471,13 @@ function isAllowedAttribute(tagName: string, name: string): boolean {
 }
 
 function normalizeUrlForProtocolCheck(value: string): string {
-  return value.replace(/[\u0000-\u001F\u007F\s]+/g, "").toLowerCase();
+  return Array.from(value)
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code > 0x1f && code !== 0x7f && !/\s/.test(char);
+    })
+    .join("")
+    .toLowerCase();
 }
 
 function isSafeUrl(value: string, allowedProtocols: Set<string>): boolean {

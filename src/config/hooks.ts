@@ -112,7 +112,7 @@ export function useLocale() {
 
       return result as string;
     },
-    [texts, i18n.language]
+    [texts]
   );
 
   return { t, i18n };
