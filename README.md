@@ -2,7 +2,7 @@
 
 <img width="2560" src="./preview.png" alt="PurCarte Theme Preview">
 
-# PurCarte-Plus
+# PurCarte-Plus Duya07 Edition
 
 一款为 [Komari](https://github.com/komari-monitor/komari) 设计的磨砂玻璃风格个性化增强版主题
 
@@ -352,7 +352,7 @@
 - **隐藏底栏原始内容** (`hideFooterOriginal`)
   - **类型:** `switch`
   - **默认值:** `false`
-  - **说明:** 启用后将隐藏底栏中的 'Powered by Komari Monitor | Theme by PurCarte-Plus' 内容
+  - **说明:** 启用后将隐藏底栏中的 'Powered by Komari Monitor | Theme by PurCarte-Plus Duya07' 内容
 
 - **启用服务器运行时间** (`enableServerUptime`)
   - **类型:** `switch`

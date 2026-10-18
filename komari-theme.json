@@ -1,9 +1,9 @@
 {
-    "name": "Komari Theme PurCart Plus",
-    "short": "PurCarte-Plus",
-    "description": "A frosted glass theme for Komari",
+    "name": "Komari Theme PurCarte Plus - Duya07 Edition",
+    "short": "PurCarte-Plus-Duya07",
+    "description": "A frosted glass theme for Komari maintained by duya07",
     "version": "tags:VERSION",
-    "author": "YannickYoung & Codex",
+    "author": "duya07 & Codex",
     "url": "https://github.com/duya07/komari-theme-purcarte-plus",
     "preview": "preview.png",
     "configuration": {

@@ -197,11 +197,11 @@ const Footer = forwardRef<
                 {" | "}
                 {t("footer.themeBy")}{" "}
                 <a
-                  href="https://github.com/YoungYannick/komari-theme-purcarte-plus"
+                  href="https://github.com/duya07/komari-theme-purcarte-plus"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="min-w-0 text-blue-500 hover:text-blue-600 transition-colors break-words">
-                  PurCarte-Plus
+                  PurCarte-Plus Duya07
                 </a>
               </p>
             )}
